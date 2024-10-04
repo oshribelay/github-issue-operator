@@ -68,3 +68,20 @@ func (g *GithubClient) UpdateIssue(owner, repo string, issue *github.Issue, desc
 
 	return updatedIssue, nil
 }
+
+func (g *GithubClient) CloseIssue(owner, repo string, issue *github.Issue) error {
+	issueNumber := issue.GetNumber()
+	state := "closed"
+
+	// prepare the request to close the issue
+	issueRequest := &github.IssueRequest{
+		State: &state, // set the issue state to closed
+	}
+
+	// close the issue with the GitHub client
+	if _, _, err := g.client.Issues.Edit(context.Background(), owner, repo, issueNumber, issueRequest); err != nil {
+		return fmt.Errorf("failed to close issue: %w", err)
+	}
+
+	return nil
+}

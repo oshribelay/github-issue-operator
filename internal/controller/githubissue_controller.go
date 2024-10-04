@@ -19,11 +19,14 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/oshribelay/github-issue-operator/internal/controller/finalizer"
 	"github.com/oshribelay/github-issue-operator/internal/controller/resources"
 	"github.com/oshribelay/github-issue-operator/internal/controller/status"
 	"github.com/oshribelay/github-issue-operator/internal/controller/utils"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"time"
 
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -57,8 +60,28 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Fetch the GithubIssue custom resource
 	githubIssue := &issuev1.GithubIssue{}
 	if err := r.Client.Get(ctx, req.NamespacedName, githubIssue); err != nil {
-		log.Error(err, "unable to fetch GithubIssue")
+		log.Info("Issue was deleted")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	// check if issue is marked for deletion (has DeletionTimestamp)
+	if !githubIssue.GetDeletionTimestamp().IsZero() {
+		// delete the issue from GitHub and remove it from the cluster
+		if err := status.Delete(ctx, r.Client, r.GithubClient, githubIssue); err != nil {
+			log.Error(err, "unable to delete GithubIssue")
+			return ctrl.Result{}, err
+		}
+
+		if err := finalizer.RemoveFinalizer(ctx, r.Client, githubIssue); err != nil {
+			log.Error(err, "unable to remove finalizer")
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{}, nil
+	}
+
+	if err := finalizer.EnsureFinalizer(ctx, r.Client, githubIssue); err != nil {
+		log.Error(err, "unable to add finalizer")
+		return ctrl.Result{Requeue: true}, err // If there's an error ensuring the finalizer, requeue
 	}
 
 	owner, repo, err := utils.ParseRepoUrl(githubIssue.Spec.Repo)
@@ -95,13 +118,12 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// update the status of the GithubIssue CR
 	if err := status.Update(ctx, r.Client, githubIssue, issue); err != nil {
+		if apierrors.IsConflict(err) {
+			log.Info("conflict occurred, requeueing...")
+			return ctrl.Result{RequeueAfter: time.Second * 5}, nil
+		}
 		log.Error(err, "unable to update GithubIssue")
 		return ctrl.Result{}, err
-	}
-	if *issue.State == "open" {
-		// if the issue is still open requeue
-		log.Info("issue open!")
-		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// no requeue needed, reconcile succeeded

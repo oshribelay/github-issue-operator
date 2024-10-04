@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"github.com/google/go-github/v47/github"
 	batchv1 "github.com/oshribelay/github-issue-operator/api/v1"
+	"github.com/oshribelay/github-issue-operator/internal/controller/resources"
+	"github.com/oshribelay/github-issue-operator/internal/controller/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 func Update(ctx context.Context, c client.Client, githubIssue *batchv1.GithubIssue, issue *github.Issue) error {
@@ -55,11 +56,38 @@ func Update(ctx context.Context, c client.Client, githubIssue *batchv1.GithubIss
 	githubIssue.Status.Conditions = conditions
 	githubIssue.Status.IssueNumber = int32(*issue.Number)
 	githubIssue.Status.LastUpdated = metav1.Now()
-	log.FromContext(ctx).Info("Updating status...")
 
 	// update the status of the GithubIssue CR
 	if err := c.Status().Update(ctx, githubIssue); err != nil {
 		return fmt.Errorf("failed to update GithubIssue status: %w", err)
+	}
+
+	return nil
+}
+
+func Delete(ctx context.Context, c client.Client, gClient *resources.GithubClient, githubIssue *batchv1.GithubIssue) error {
+	owner, repo, err := utils.ParseRepoUrl(githubIssue.Spec.Repo)
+	if err != nil {
+		return fmt.Errorf("failed to parse repo url: %w", err)
+	}
+
+	// check if the issue exists
+	issue, err := gClient.CheckIssueExists(owner, repo, githubIssue.Spec.Title)
+	if err != nil {
+		return fmt.Errorf("failed to check if issue exists: %w", err)
+	}
+
+	// close the issue if it exists and still open
+	if issue != nil && *issue.State == "open" {
+		err := gClient.CloseIssue(owner, repo, issue)
+		if err != nil {
+			return fmt.Errorf("failed to close issue: %w", err)
+		}
+	}
+
+	// remove the GithubIssue CR from the cluster
+	if err := c.Delete(ctx, githubIssue); err != nil {
+		return fmt.Errorf("failed to delete GithubIssue: %w", err)
 	}
 
 	return nil
