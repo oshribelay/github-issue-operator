@@ -29,7 +29,14 @@ type GithubIssueSpec struct {
 
 // GithubIssueStatus defines the observed state of GithubIssue
 type GithubIssueStatus struct {
+	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// +optional
+	IssueNumber int32 `json:"issueNumber,omitempty"`
+
+	// +optional
+	LastUpdated metav1.Time `json:"lastUpdated,omitempty"`
 }
 
 // +kubebuilder:object:root=true

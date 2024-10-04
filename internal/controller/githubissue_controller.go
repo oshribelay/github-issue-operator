@@ -39,15 +39,6 @@ type GithubIssueReconciler struct {
 	Scheme       *runtime.Scheme
 }
 
-// NewGithubIssueReconciler initializes a new GithubIssueReconciler
-func NewGithubIssueReconciler(client client.Client, scheme *runtime.Scheme, token string) *GithubIssueReconciler {
-	return &GithubIssueReconciler{
-		Client:       client,
-		GithubClient: resources.NewGithubClient(token), // Initialize the GithubClient
-		Scheme:       scheme,
-	}
-}
-
 // +kubebuilder:rbac:groups=issue.core.github.io,resources=githubissues,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=issue.core.github.io,resources=githubissues/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=issue.core.github.io,resources=githubissues/finalizers,verbs=update
@@ -107,9 +98,9 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		log.Error(err, "unable to update GithubIssue")
 		return ctrl.Result{}, err
 	}
-
 	if *issue.State == "open" {
 		// if the issue is still open requeue
+		log.Info("issue open!")
 		return ctrl.Result{Requeue: true}, nil
 	}
 
