@@ -19,6 +19,7 @@ package main
 import (
 	"crypto/tls"
 	"flag"
+	"github.com/oshribelay/github-issue-operator/internal/controller/resources"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -144,9 +145,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	token := os.Getenv("GITHUB_TOKEN") // get github token
 	if err = (&controller.GithubIssueReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:       mgr.GetClient(),
+		GithubClient: resources.NewGithubClient(token),
+		Scheme:       mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GithubIssue")
 		os.Exit(1)
