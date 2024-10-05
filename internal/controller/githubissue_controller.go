@@ -23,9 +23,9 @@ import (
 	"github.com/oshribelay/github-issue-operator/internal/controller/resources"
 	"github.com/oshribelay/github-issue-operator/internal/controller/status"
 	"github.com/oshribelay/github-issue-operator/internal/controller/utils"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"time"
 
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -52,18 +52,37 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	log := log.FromContext(ctx)
 	log.Info("Reconciling GithubIssue")
 
-	// Make sure to check if r.GithubClient is nil before using it
-	if r.GithubClient == nil {
-		log.V(1).Info("GithubClient is not initialized")
-		return reconcile.Result{}, fmt.Errorf("GithubClient is not initialized")
-	}
-
 	// Fetch the GithubIssue custom resource
 	githubIssue := &issuev1.GithubIssue{}
 	if err := r.Client.Get(ctx, req.NamespacedName, githubIssue); err != nil {
 		log.Info("Issue was deleted")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
+	// Fetch the associated Secret to get the token
+	secret := &corev1.Secret{}
+	if err := r.Client.Get(ctx, client.ObjectKey{
+		Name:      fmt.Sprintf("%s-token-secret", githubIssue.Name),
+		Namespace: githubIssue.Namespace,
+	}, secret); err != nil && apierrors.IsNotFound(err) {
+		// secret does not exist, create it
+		err = resources.CreateSecret(githubIssue, r.Client, ctx)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		// requeue to process after secret creation
+		return ctrl.Result{Requeue: true}, nil
+	}
+
+	// Fetch GitHub token from secret
+	token, exists := secret.Data["token"]
+	if !exists || len(token) == 0 {
+		log.Info("GitHub token missing in secret, requeueing...")
+		return ctrl.Result{RequeueAfter: time.Minute}, nil // retry after a minute
+	}
+
+	// initialize GitHub Client dynamically with the token from the secret
+	r.GithubClient = resources.NewGithubClient(string(token))
 
 	// check if issue is marked for deletion (has DeletionTimestamp)
 	if !githubIssue.GetDeletionTimestamp().IsZero() {

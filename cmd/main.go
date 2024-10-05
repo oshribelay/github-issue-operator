@@ -19,7 +19,6 @@ package main
 import (
 	"crypto/tls"
 	"flag"
-	"github.com/oshribelay/github-issue-operator/internal/controller/resources"
 	"os"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"time"
@@ -152,10 +151,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	token := os.Getenv("GITHUB_TOKEN") // get github token
 	if err = (&controller.GithubIssueReconciler{
 		Client:       mgr.GetClient(),
-		GithubClient: resources.NewGithubClient(token),
+		GithubClient: nil,
 		Scheme:       mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GithubIssue")
