@@ -25,7 +25,7 @@ func NewGithubClient(token string) *GithubClient {
 }
 
 // CheckIssueExists checks if and issue with the same title exists in the repository
-func (g *GithubClient) CheckIssueExists(owner, repo, title string) (*github.Issue, error) {
+func (g *GithubClient) CheckIssueExists(owner, repo, title string, issueNumber int) (*github.Issue, error) {
 	issues, _, err := g.client.Issues.ListByRepo(context.Background(), owner, repo, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list issues: %w %s", err, owner)
@@ -33,7 +33,7 @@ func (g *GithubClient) CheckIssueExists(owner, repo, title string) (*github.Issu
 
 	// look for issue matching the title
 	for _, issue := range issues {
-		if issue.GetTitle() == title {
+		if issue.GetTitle() == title || issue.GetNumber() == issueNumber {
 			return issue, nil
 		}
 	}
@@ -55,10 +55,11 @@ func (g *GithubClient) CreateIssue(owner, repo, title, description string) (*git
 	return createdIssue, nil
 }
 
-func (g *GithubClient) UpdateIssue(owner, repo string, issue *github.Issue, description string) (*github.Issue, error) {
+func (g *GithubClient) UpdateIssue(owner, repo string, issue *github.Issue, description, title string) (*github.Issue, error) {
 	// prepare an issue request for updating
 	issueRequest := &github.IssueRequest{
-		Body: &description, // for now only modify the issue description
+		Title: &title,
+		Body:  &description,
 	}
 
 	updatedIssue, _, err := g.client.Issues.Edit(context.Background(), owner, repo, *issue.Number, issueRequest)

@@ -67,12 +67,13 @@ func Update(ctx context.Context, c client.Client, githubIssue *batchv1.GithubIss
 
 func Delete(ctx context.Context, c client.Client, gClient *resources.GithubClient, githubIssue *batchv1.GithubIssue) error {
 	owner, repo, err := utils.ParseRepoUrl(githubIssue.Spec.Repo)
+	issueNumber := int(githubIssue.Status.IssueNumber)
 	if err != nil {
 		return fmt.Errorf("failed to parse repo url: %w", err)
 	}
 
 	// check if the issue exists
-	issue, err := gClient.CheckIssueExists(owner, repo, githubIssue.Spec.Title)
+	issue, err := gClient.CheckIssueExists(owner, repo, githubIssue.Spec.Title, issueNumber)
 	if err != nil {
 		return fmt.Errorf("failed to check if issue exists: %w", err)
 	}

@@ -91,9 +91,10 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 	title := githubIssue.Spec.Title
 	description := githubIssue.Spec.Description
+	issueNumber := githubIssue.Status.IssueNumber
 
-	// check if issue exists
-	issue, err := r.GithubClient.CheckIssueExists(owner, repo, title)
+	// no issue number in status check existence by title
+	issue, err := r.GithubClient.CheckIssueExists(owner, repo, title, int(issueNumber))
 	if err != nil {
 		log.Error(err, "unable to check issue existence")
 		return ctrl.Result{}, err
@@ -108,14 +109,13 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	} else {
 		// update the issue if it exists
-		updatedIssue, err := r.GithubClient.UpdateIssue(owner, repo, issue, description)
+		updatedIssue, err := r.GithubClient.UpdateIssue(owner, repo, issue, description, title)
 		if err != nil {
 			log.Error(err, "unable to update issue")
 			return ctrl.Result{}, err
 		}
 		issue = updatedIssue
 	}
-
 	// update the status of the GithubIssue CR
 	if err := status.Update(ctx, r.Client, githubIssue, issue); err != nil {
 		if apierrors.IsConflict(err) {
