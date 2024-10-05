@@ -50,6 +50,7 @@ type GithubIssueReconciler struct {
 // move the current state of the cluster closer to the desired state.
 func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	log := log.FromContext(ctx)
+	log.Info("Reconciling GithubIssue")
 
 	// Make sure to check if r.GithubClient is nil before using it
 	if r.GithubClient == nil {
