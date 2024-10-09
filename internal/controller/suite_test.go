@@ -19,8 +19,11 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/joho/godotenv"
+	"github.com/oshribelay/github-issue-operator/internal/controller/resources"
 	"path/filepath"
 	"runtime"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -53,7 +56,16 @@ func TestControllers(t *testing.T) {
 }
 
 var _ = BeforeSuite(func() {
-	logf.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
+	// Set up logging with development config and high verbosity
+	opts := zap.Options{
+		Development: true,
+	}
+	logger := zap.New(zap.UseFlagOptions(&opts))
+	ctrl.SetLogger(logger)
+	logf.SetLogger(logger)
+
+	envErr := godotenv.Load("../../.env.test")
+	Expect(envErr).To(BeNil(), "could not load env file")
 
 	ctx, cancel = context.WithCancel(context.TODO())
 
@@ -86,6 +98,27 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 	Expect(k8sClient).NotTo(BeNil())
 
+	// create the manager
+	k8sManager, err := ctrl.NewManager(cfg, ctrl.Options{
+		Scheme: scheme.Scheme,
+	})
+	Expect(err).ToNot(HaveOccurred())
+
+	// create the reconciler
+	err = (&GithubIssueReconciler{
+		Client:       k8sManager.GetClient(),
+		GithubClient: resources.NewGithubClient("Z2hwX1AyUElSSXVFZ0U5TXJhMm9vMDM3b2xaTzRsM2lSMjBPdnhwTA=="),
+		Scheme:       k8sManager.GetScheme(),
+		Log:          logger,
+	}).SetupWithManager(k8sManager)
+	Expect(err).ToNot(HaveOccurred())
+
+	// start the controller
+	go func() {
+		defer GinkgoRecover()
+		err = k8sManager.Start(ctx)
+		Expect(err).ToNot(HaveOccurred(), "failed to run manager")
+	}()
 })
 
 var _ = AfterSuite(func() {

@@ -19,6 +19,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/go-logr/logr"
 	"github.com/oshribelay/github-issue-operator/internal/controller/finalizer"
 	"github.com/oshribelay/github-issue-operator/internal/controller/resources"
 	"github.com/oshribelay/github-issue-operator/internal/controller/status"
@@ -28,11 +29,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"time"
 
+	issuev1 "github.com/oshribelay/github-issue-operator/api/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	issuev1 "github.com/oshribelay/github-issue-operator/api/v1"
 )
 
 // GithubIssueReconciler reconciles a GithubIssue object
@@ -40,6 +39,7 @@ type GithubIssueReconciler struct {
 	Client       client.Client
 	GithubClient *resources.GithubClient
 	Scheme       *runtime.Scheme
+	Log          logr.Logger
 }
 
 // +kubebuilder:rbac:groups=issue.core.github.io,resources=githubissues,verbs=get;list;watch;create;update;patch;delete
@@ -50,7 +50,8 @@ type GithubIssueReconciler struct {
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	log := log.FromContext(ctx)
+	//log := log.FromContext(ctx)
+	log := r.Log.WithValues("githubissue", req.NamespacedName)
 	log.Info("Reconciling GithubIssue")
 
 	// Fetch the GithubIssue custom resource

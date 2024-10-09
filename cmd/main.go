@@ -63,6 +63,7 @@ func main() {
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
 	syncPeriod := time.Duration(1) * time.Minute
+	log := ctrl.Log.WithName("controllers").WithName("github-issue-operator")
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -156,6 +157,7 @@ func main() {
 		Client:       mgr.GetClient(),
 		GithubClient: nil,
 		Scheme:       mgr.GetScheme(),
+		Log:          log,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "GithubIssue")
 		os.Exit(1)
