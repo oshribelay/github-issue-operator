@@ -19,9 +19,12 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/google/go-github/v47/github"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	issuev1 "github.com/oshribelay/github-issue-operator/api/v1"
+	"github.com/oshribelay/github-issue-operator/internal/controller/utils"
+	"golang.org/x/oauth2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -89,6 +92,17 @@ var _ = Describe("GithubIssue Controller", func() {
 					"token": os.Getenv("TEST_AUTH_TOKEN"),
 				},
 			}
+
+			// Ensure the Secret is deleted before creating it again
+			err = k8sClient.Delete(context.TODO(), &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-resource-token-secret",
+					Namespace: "default",
+				},
+			})
+			// Only return an error if the Secret exists and can't be deleted
+			Expect(err != nil && !errors.IsNotFound(err)).To(BeFalse())
+
 			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
 
 			// ensure the Secret has been created
@@ -184,7 +198,65 @@ var _ = Describe("GithubIssue Controller", func() {
 			By("verifying the issue details are correct")
 			Expect(createdIssue.Spec.Title).To(Equal("Test Issue"))
 			Expect(createdIssue.Spec.Description).To(Equal("This is a test issue"))
-			Expect(createdIssue.Spec.Repo).To(Equal("https://github.com/oshribelay/test-issues-operator"))
+			Expect(createdIssue.Spec.Repo).To(Equal(os.Getenv("TEST_REPO_URL")))
+		})
+		It("Should close the issue on delete", func() {
+			By("creating new github client")
+			ts := oauth2.StaticTokenSource(
+				&oauth2.Token{AccessToken: os.Getenv("TEST_AUTH_TOKEN")},
+			)
+
+			tc := oauth2.NewClient(context.Background(), ts)
+			client := github.NewClient(tc)
+			Expect(client).ToNot(BeNil())
+
+			//By("verifying the GithubIssue resource exists")
+			//createdIssue := &issuev1.GithubIssue{}
+			//Eventually(func() error {
+			//	return k8sClient.Get(ctx, typeNamespacedName, createdIssue)
+			//}, timeout, interval).Should(Succeed())
+			By("waiting for the issue number to be set")
+			createdIssue := &issuev1.GithubIssue{}
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, typeNamespacedName, createdIssue)
+				return err == nil && createdIssue.Status.IssueNumber > 0
+			}, timeout, interval).Should(BeTrue(), "Issue number should be set in the status")
+
+			By("deleting the issue")
+			Expect(k8sClient.Delete(ctx, createdIssue)).To(Succeed())
+
+			By("waiting for the controller to handle deletion")
+			Eventually(func() bool {
+				err := k8sClient.Get(ctx, typeNamespacedName, createdIssue)
+				return errors.IsNotFound(err)
+			}, timeout, interval).Should(BeTrue())
+
+			By("waiting for the issue to be deleted on GitHub")
+			Eventually(func() bool {
+				isIssueClosed, err := checkIssueClosedOnGithub(client, createdIssue, ctx)
+				if err != nil {
+					fmt.Println(err)
+					return false
+				}
+				return isIssueClosed
+			}, timeout, interval).Should(BeTrue(), "Issue should be closed on GitHub")
 		})
 	})
 })
+
+func checkIssueClosedOnGithub(c *github.Client, githubIssue *issuev1.GithubIssue, ctx context.Context) (bool, error) {
+	owner, repo, err := utils.ParseRepoUrl(githubIssue.Spec.Repo)
+	if err != nil {
+		return false, err
+	}
+	issue, _, err := c.Issues.Get(ctx, owner, repo, int(githubIssue.Status.IssueNumber))
+	fmt.Println("", "issueNumber: ", githubIssue.Status.IssueNumber)
+	if err != nil {
+		return false, err
+	}
+
+	if *issue.State == "closed" {
+		return true, nil
+	}
+	return false, nil
+}
