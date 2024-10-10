@@ -298,6 +298,97 @@ var _ = Describe("GithubIssue Controller", func() {
 				}
 			}
 		})
+		It("Should enforce webhook validation during update", func() {
+			const (
+				validTitle       = "Initial Valid Title"
+				validDescription = "Initial Valid Description"
+			)
+
+			ctx := context.Background()
+
+			// Create a valid initial resource
+			initialIssue := &issuev1.GithubIssue{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      fmt.Sprintf("%s-update-test", resourceName),
+					Namespace: "default",
+				},
+				Spec: issuev1.GithubIssueSpec{
+					Repo:        os.Getenv("TEST_REPO_URL"),
+					Title:       validTitle,
+					Description: validDescription,
+				},
+			}
+
+			// Clean up any existing test resources
+			k8sClient.Delete(ctx, initialIssue)
+
+			// Create the initial valid resource
+			Expect(k8sClient.Create(ctx, initialIssue)).To(Succeed(), "Should create initial valid resource")
+
+			// Wait for the resource to be created
+			Eventually(func() error {
+				return k8sClient.Get(ctx, types.NamespacedName{
+					Name:      initialIssue.Name,
+					Namespace: initialIssue.Namespace,
+				}, initialIssue)
+			}, timeout, interval).Should(Succeed())
+
+			UpdateTestCases := []struct {
+				name          string
+				updateSpec    issuev1.GithubIssueSpec
+				expectedError string
+			}{
+				{
+					name: "invalid-title-update",
+					updateSpec: issuev1.GithubIssueSpec{
+						Repo:        os.Getenv("TEST_REPO_URL"),
+						Title:       "",
+						Description: "test description",
+					},
+					expectedError: "title must not be empty",
+				},
+				{
+					name: "invalid-repo-url-update",
+					updateSpec: issuev1.GithubIssueSpec{
+						Repo:        "invalid-url",
+						Title:       "Test Title",
+						Description: "Test description",
+					},
+					expectedError: "repository url should start with https",
+				},
+			}
+
+			for _, tc := range UpdateTestCases {
+				tc := tc // Capture range variable
+				By(fmt.Sprintf("testing update case: %s", tc.name))
+
+				// Get the latest version of the resource
+				updatedIssue := &issuev1.GithubIssue{}
+				Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      initialIssue.Name,
+					Namespace: initialIssue.Namespace,
+				}, updatedIssue)).To(Succeed())
+
+				// attempt to update
+				updatedIssue.Spec = tc.updateSpec
+				err := k8sClient.Update(ctx, updatedIssue)
+
+				Expect(err).To(HaveOccurred(), "Invalid update should fail")
+				Expect(err.Error()).To(ContainSubstring(tc.expectedError))
+
+				// Verify the resource wasn't changed
+				currentIssue := &issuev1.GithubIssue{}
+				Expect(k8sClient.Get(ctx, types.NamespacedName{
+					Name:      initialIssue.Name,
+					Namespace: initialIssue.Namespace,
+				}, currentIssue)).To(Succeed())
+
+				// Verify the spec wasn't changed
+				Expect(currentIssue.Spec.Title).To(Equal(validTitle), "Title should remain unchanged")
+				Expect(currentIssue.Spec.Repo).To(Equal(os.Getenv("TEST_REPO_URL")), "Repo should remain unchanged")
+				Expect(currentIssue.Spec.Description).To(Equal(validDescription), "Description should remain unchanged")
+			}
+		})
 	})
 })
 
