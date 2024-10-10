@@ -236,6 +236,68 @@ var _ = Describe("GithubIssue Controller", func() {
 				return isIssueClosed
 			}, timeout, interval).Should(BeTrue(), "Issue should be closed on GitHub")
 		})
+		It("Should enforce webhook validation during creation", func() {
+			CreationTestCases := []struct {
+				name          string
+				issueSpec     issuev1.GithubIssueSpec
+				expectedError string
+			}{
+				{
+					name: "valid-creation",
+					issueSpec: issuev1.GithubIssueSpec{
+						Repo:        os.Getenv("TEST_REPO_URL"),
+						Title:       "valid creation title",
+						Description: "this is a valid issue",
+					},
+					expectedError: "",
+				},
+				{
+					name: "invalid-title",
+					issueSpec: issuev1.GithubIssueSpec{
+						Repo:        os.Getenv("TEST_REPO_URL"),
+						Title:       "",
+						Description: "test description",
+					},
+					expectedError: "title must not be empty",
+				},
+				{
+					name: "invalid-repo-url",
+					issueSpec: issuev1.GithubIssueSpec{
+						Repo:        "invalid-url",
+						Title:       "Test Title",
+						Description: "Test description",
+					},
+					expectedError: "repository url should start with https",
+				},
+			}
+			for _, tc := range CreationTestCases {
+				tc := tc
+				By(fmt.Sprintf("now testing %s", tc.name))
+
+				issue := &issuev1.GithubIssue{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      fmt.Sprintf("%s-%s", resourceName, tc.name),
+						Namespace: "default",
+					},
+					Spec: tc.issueSpec,
+				}
+
+				// clean up any existing issues
+				k8sClient.Delete(ctx, issue)
+
+				// attempt to create
+				err := k8sClient.Create(ctx, issue)
+
+				if tc.expectedError == "" {
+					Expect(err).NotTo(HaveOccurred(), "valid creation should succeed")
+					// clean up after successful creation
+					Expect(k8sClient.Delete(ctx, issue)).To(Succeed())
+				} else {
+					Expect(err).To(HaveOccurred(), "invalid creation should fail")
+					Expect(err.Error()).To(ContainSubstring(tc.expectedError))
+				}
+			}
+		})
 	})
 })
 
