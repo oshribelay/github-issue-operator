@@ -210,11 +210,6 @@ var _ = Describe("GithubIssue Controller", func() {
 			client := github.NewClient(tc)
 			Expect(client).ToNot(BeNil())
 
-			//By("verifying the GithubIssue resource exists")
-			//createdIssue := &issuev1.GithubIssue{}
-			//Eventually(func() error {
-			//	return k8sClient.Get(ctx, typeNamespacedName, createdIssue)
-			//}, timeout, interval).Should(Succeed())
 			By("waiting for the issue number to be set")
 			createdIssue := &issuev1.GithubIssue{}
 			Eventually(func() bool {
