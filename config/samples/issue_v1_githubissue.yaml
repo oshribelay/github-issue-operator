@@ -6,4 +6,6 @@ metadata:
     app.kubernetes.io/managed-by: kustomize
   name: githubissue-sample
 spec:
-  # TODO(user): Add fields here
+  repo: "https://github.com/oshribelay/test-issues-operator" # Replace with your repo URL
+  title: "Sample Issue Title"
+  description: "This is a sample issue description."
