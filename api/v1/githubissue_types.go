@@ -37,6 +37,9 @@ type GithubIssueStatus struct {
 
 	// +optional
 	LastUpdated metav1.Time `json:"lastUpdated,omitempty"`
+
+	// +optional
+	TokenRequired bool `json:"TokenRequired,omitempty"`
 }
 
 // +kubebuilder:object:root=true

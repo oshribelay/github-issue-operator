@@ -50,7 +50,6 @@ type GithubIssueReconciler struct {
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	//log := log.FromContext(ctx)
 	log := r.Log.WithValues("githubissue", req.NamespacedName)
 	log.Info("Reconciling GithubIssue")
 
@@ -60,31 +59,6 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		log.Info("Issue was deleted")
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
-
-	// Fetch the associated Secret to get the token
-	secret := &corev1.Secret{}
-	if err := r.Client.Get(ctx, client.ObjectKey{
-		Name:      fmt.Sprintf("%s-token-secret", githubIssue.Name),
-		Namespace: githubIssue.Namespace,
-	}, secret); err != nil && apierrors.IsNotFound(err) {
-		// secret does not exist, create it
-		err = resources.CreateSecret(githubIssue, r.Client, ctx)
-		if err != nil {
-			return ctrl.Result{}, err
-		}
-		// requeue to process after secret creation
-		return ctrl.Result{Requeue: true}, nil
-	}
-
-	// Fetch GitHub token from secret
-	token, exists := secret.Data["token"]
-	if !exists || len(token) == 0 {
-		log.Info("GitHub token missing in secret, requeueing...")
-		return ctrl.Result{RequeueAfter: time.Minute}, nil // retry after a minute
-	}
-
-	// initialize GitHub Client dynamically with the token from the secret
-	r.GithubClient = resources.NewGithubClient(string(token))
 
 	// check if issue is marked for deletion (has DeletionTimestamp)
 	if !githubIssue.GetDeletionTimestamp().IsZero() {
@@ -100,6 +74,48 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		return ctrl.Result{}, nil
 	}
+
+	// Fetch the associated Secret to get the token
+	secret := &corev1.Secret{}
+	if err := r.Client.Get(ctx, client.ObjectKey{
+		Name:      fmt.Sprintf("%s-token-secret", githubIssue.Name),
+		Namespace: githubIssue.Namespace,
+	}, secret); err != nil {
+		if apierrors.IsNotFound(err) {
+			// Secret not found, create it
+			err = resources.CreateSecret(githubIssue, r.Client, ctx)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+			// Update status to indicate token is required
+			if err := status.UpdateTokenRequired(ctx, r.Client, githubIssue, true); err != nil {
+				log.Error(err, "unable to update TokenRequired status")
+				return ctrl.Result{}, err
+			}
+			return ctrl.Result{Requeue: true}, nil
+		}
+		return ctrl.Result{}, err
+	}
+
+	// Fetch token from secret
+	token, exists := secret.Data["token"]
+	if !exists || len(token) == 0 {
+		log.Info("GitHub token missing in secret, requeueing...")
+		// Update status to indicate token is required
+		if err := status.UpdateTokenRequired(ctx, r.Client, githubIssue, true); err != nil {
+			log.Error(err, "unable to update TokenRequired status")
+			return ctrl.Result{}, err
+		}
+		return ctrl.Result{RequeueAfter: time.Minute}, nil
+	}
+
+	// Token exists, update status to indicate token is not required
+	if err := status.UpdateTokenRequired(ctx, r.Client, githubIssue, false); err != nil {
+		log.Error(err, "unable to update TokenRequired status")
+		return ctrl.Result{}, err
+	}
+	// initialize GitHub Client dynamically with the token from the secret
+	r.GithubClient = resources.NewGithubClient(string(token))
 
 	if err := finalizer.EnsureFinalizer(ctx, r.Client, githubIssue); err != nil {
 		log.Error(err, "unable to add finalizer")

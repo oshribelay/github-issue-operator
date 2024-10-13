@@ -93,3 +93,8 @@ func Delete(ctx context.Context, c client.Client, gClient *resources.GithubClien
 
 	return nil
 }
+
+func UpdateTokenRequired(ctx context.Context, c client.Client, githubIssue *batchv1.GithubIssue, required bool) error {
+	githubIssue.Status.TokenRequired = required
+	return c.Status().Update(ctx, githubIssue)
+}
