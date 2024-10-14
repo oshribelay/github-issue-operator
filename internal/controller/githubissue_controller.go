@@ -131,7 +131,6 @@ func (r *GithubIssueReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	description := githubIssue.Spec.Description
 	issueNumber := githubIssue.Status.IssueNumber
 
-	// no issue number in status check existence by title
 	issue, err := r.GithubClient.CheckIssueExists(owner, repo, title, int(issueNumber))
 	if err != nil {
 		log.Error(err, "unable to check issue existence")
