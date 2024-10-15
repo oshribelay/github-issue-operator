@@ -31,7 +31,7 @@ func (g *GithubClient) CheckIssueExists(owner, repo, title string, issueNumber i
 		return nil, fmt.Errorf("failed to list issues: %w %s", err, owner)
 	}
 
-	// look for issue matching the title
+	// look for issue matching the title or number
 	for _, issue := range issues {
 		if issue.GetTitle() == title || issue.GetNumber() == issueNumber {
 			return issue, nil
