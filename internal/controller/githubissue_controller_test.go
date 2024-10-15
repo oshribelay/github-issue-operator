@@ -398,7 +398,6 @@ func checkIssueClosedOnGithub(c *github.Client, githubIssue *issuev1.GithubIssue
 		return false, err
 	}
 	issue, _, err := c.Issues.Get(ctx, owner, repo, int(githubIssue.Status.IssueNumber))
-	fmt.Println("", "issueNumber: ", githubIssue.Status.IssueNumber)
 	if err != nil {
 		return false, err
 	}
